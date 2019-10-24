@@ -7,6 +7,9 @@ class Metrics {
     private static $instance;
     private $tags = [];
 
+    protected $connection;
+    protected $statsd;
+
     const PREFIX = 'appmetrics';
 
     private $metric_types = [
@@ -23,7 +26,16 @@ class Metrics {
         $this->appname = $appname;
         $this->hostname = $hostname;
 
+        $this->init();
+    }
+
+    protected function init()
+    {
+        // Build metrics
         $this->metrics = $this->init_metrics($this->metric_types);
+
+        // Init tag
+        $this->setTag('host', $this->getHostname()); 
     }
 
     /**
@@ -41,19 +53,51 @@ class Metrics {
     }
 
     /**
-     * Set Statsd Client
+     * Set Statsd connection
      *
-     * @param [string] $host
-     * @param [Int] $port
+     * @param string|\Domnikl\Statsd\Connection $host
+     * @param int $port. Defaults to UDP 8125 port
      * @return self
+     * @throws \Exception if host or port is not provided
      */
-    public function setClient($host, $port)
+    public function connect($host, $port=8125)
     {
         if(!$host || !$port) {
             throw new \Exception('Host and Port are required for metrics');
         }
 
-        $this->statsd = $this->setConnection($host, $port)->getStatsdClient();
+        if($host instanceof \Domnikl\Statsd\Connection) {
+            $connection = $host;
+        }
+        else $connection = $this->getUdpSocketInstance($host, $port);
+
+        return $this->setClient($connection);
+    }
+
+    private function getUdpSocketInstance($host, $port)
+    {
+        return new \Domnikl\Statsd\Connection\UdpSocket($host, $port);
+    }
+
+    /**
+     * Set a Statsd Client
+     *
+     * @param \Domnikl\Statsd\Connection $connection
+     * @param string|null $namespace
+     * @return \Domnikl\Statsd\Client $client
+     * @throws \Exception if invalid connection is provided
+     */
+    public function setClient($connection, $namespace=null)
+    {
+        if(!$connection || !($connection instanceof \Domnikl\Statsd\Connection)) {
+            throw new \Exception("Invalid Statsd Connection: {$connection}");
+        }
+
+        $this->statsd = new \Domnikl\Statsd\Client(
+            $connection,
+            $this->getBaseNamespace()
+        );
+
         return $this;
     }
 
@@ -64,49 +108,9 @@ class Metrics {
      */
     public function getClient()
     {
-        if(!isset($this->statsd) || !($this->statsd instanceof \Domnikl\Statsd\Client)) {
-            throw new \Exception('Statsd client not set');
-        }
-
         return $this->statsd;
     }
 
-    /**
-     * Get Udp Socket Connection
-     *
-     * @return \Domnikl\Statsd\Connection $connection
-     */
-    public function getConnection()
-    {
-        return $this->connection;
-    }
-
-    /**
-     * Set a UDP socket connection
-     *
-     * @param [string] $host
-     * @param [string] $port
-     * @return \Domnikl\Statsd\Connection $connection
-     */
-    private function setConnection($host, $port) {
-       // $this->connection = new \Domnikl\Statsd\Connection\UdpSocket($host, $port);
-        $this->connection = new \Domnikl\Statsd\Connection\File('abc.txt', 'a+');
-        return $this;
-    }
-
-    /**
-     * Get Statsd Client
-     *
-     * @param \Domnikl\Statsd\Connection $connection
-     * @return \Domnikl\Statsd\Client $client
-     */
-    public function getStatsdClient()
-    {
-        return new \Domnikl\Statsd\Client(
-            $this->getConnection(),
-            $this->getBaseNamespace()
-        );
-    }
 
     /**
      * Set a tag
@@ -115,19 +119,19 @@ class Metrics {
      * @param [string] $val
      * @return self
      */
-    public function setTag($key, $val)
+    public function setTag($key, $val=null)
     {
         if(is_array($key)) {
             $this->tags = array_merge($this->tags, $key);
         }
-        $this->tags[$key] = $val;
+        else $this->tags[$key] = $val;
         return $this;
     }
 
     /**
      * Get a tag
      *
-     * @param [string] $key
+     * @param string $key
      * @return string Tag
      */
     public function getTag($key)
@@ -138,8 +142,8 @@ class Metrics {
     /**
      * Get Metrics instance
      *
-     * @param [string] $appname Application name 
-     * @param [type] $hostname Hostname or ip address of server
+     * @param string $appname Application name 
+     * @param string|null $hostname Hostname or ip address of server
      * @return self
      */
     public static function getInstance($appname, $hostname=null)
