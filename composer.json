@@ -1,0 +1,24 @@
+{
+    "name": "myoperator/metrics",
+    "description": "Metrics wrapper that pushes your metrics to StatsD server",
+    "type": "library",
+    "license": "GPL",
+    "authors": [
+        {
+            "name": "Ashutosh Chaudhary",
+            "email": "216.ashutosh@gmail.com"
+        }
+    ],
+    "minimum-stability": "dev",
+    "require": {
+        "domnikl/statsd": "~3.0"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^4"
+    },
+    "autoload": {
+        "psr-4": {
+            "MyOperator\\Metrics": "src/"
+        }
+    }
+}
