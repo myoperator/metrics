@@ -14,7 +14,7 @@
         "domnikl/statsd": "~3.0"
     },
     "require-dev": {
-        "phpunit/phpunit": "^4"
+        "phpunit/phpunit": "^8"
     },
     "autoload": {
         "psr-4": {
