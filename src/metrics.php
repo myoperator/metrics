@@ -4,9 +4,8 @@ namespace MyOperator\Metrics;
 
 class Metrics {
 
-    private static $instance;
-    private $tags = [];
-
+    protected static $instance;
+    protected $tags = [];
     protected $connection;
     protected $statsd;
 
@@ -151,10 +150,15 @@ class Metrics {
         if($hostname === null) {
             $hostname = gethostname();
         }
-        if(!isset(self::$instance)) {
-            self::$instance = new static($appname, $hostname);
+
+        $callee = get_called_class();
+        if($callee && !isset(static::$instance[$callee])) {
+            static::$instance[$callee] = new $callee($appname, $hostname);
+            return static::$instance[$callee];
+        } else if(!isset(static::$instance)) {
+            static::$instance = new static($appname, $hostname);
         }
-        return self::$instance;
+        return static::$instance;
     }
 
     protected function getApplication() {
