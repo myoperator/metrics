@@ -22,7 +22,22 @@ class MetricTest extends TestCase
         $this->connection = new InMemory();
         Metrics::setApplication('mytest');
         Metrics::setConnection($this->connection);
-        $this->metrics = Metrics::getInstance();
+        $this->metrics = Metrics::getInstance('mytest');
+        //$this->metrics->nsetConnection($this->connection);
+    }
+
+    public function test_multiple_app_instance()
+    {
+        $this->assertInstanceOf(Metrics::class, $this->metrics);
+        $metrics = Metrics::getInstance('something');
+        $this->assertInstanceOf(Metrics::class, $metrics);
+        $this->assertNotSame($metrics, $this->metrics);
+        $this->metrics->count('abc');
+        $statsd_messages = $this->metrics->getConnection()->getMessages();
+        $this->assertStringContainsString('something', $statsd_messages[0]);
+        //$this->assertStringContainsString('mytest', $statsd_messages[0]);
+        $this->assertStringNotContainsString('mytest', $statsd_messages[0]);
+        $this->metrics->getConnection()->clear();
     }
 
     public function test_instance_returns_current_class()
@@ -61,10 +76,15 @@ class MetricTest extends TestCase
         }
     }
 
-    public function test_init_set_metrics_and_tags()
+    public function test_init_set_tags()
     {
         $host_tag = $this->metrics->getTag('host');
         $this->assertNotNull($host_tag);
-        // Assert Metrics
+        $metrics = Metrics::getInstance('mytest2');
+        $uniquetag = microtime();
+        $metrics->setTag('uniquetag', $uniquetag);
+        $metrics->count('abc');
+        $statsd_messages = $metrics->getConnection()->getMessages();
+        $this->assertStringContainsString($uniquetag, $statsd_messages[0]);
     }
 }
