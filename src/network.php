@@ -17,6 +17,5 @@ class Network extends Metrics {
     public function end($code=200, $data=null)
     {
         $this->end_timer(self::METRIC_TYPE);
-        return $this->test;
     }
 }

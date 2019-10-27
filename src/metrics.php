@@ -5,9 +5,13 @@ namespace MyOperator\Metrics;
 class Metrics {
 
     protected static $instance;
+    protected static $statsd;
+    protected static $connection;
+    protected static $appname;
+    protected static $hostname;
+
     protected $tags = [];
-    protected $connection;
-    protected $statsd;
+    private $debug;
 
     const PREFIX = 'appmetrics';
 
@@ -22,8 +26,8 @@ class Metrics {
 
     private function __construct($appname, $hostname)
     {
-        $this->appname = $appname;
-        $this->hostname = $hostname;
+        self::$appname = $appname;
+        self::$hostname = $hostname;
 
         $this->init();
     }
@@ -34,7 +38,7 @@ class Metrics {
         $this->metrics = $this->init_metrics($this->metric_types);
 
         // Init tag
-        $this->setTag('host', $this->getHostname()); 
+        $this->setTag('host', $this->getHostname());
     }
 
     /**
@@ -51,16 +55,7 @@ class Metrics {
         return $this;
     }
 
-    /**
-     * Set Statsd connection
-     *
-     * @param string|\Domnikl\Statsd\Connection $host
-     * @param int $port. Defaults to UDP 8125 port
-     * @return self
-     * @throws \Exception if host or port is not provided
-     */
-    public function connect($host, $port=8125)
-    {
+    public static function setConnection($host, $port=8125) {
         if(!$host || !$port) {
             throw new \Exception('Host and Port are required for metrics');
         }
@@ -68,12 +63,15 @@ class Metrics {
         if($host instanceof \Domnikl\Statsd\Connection) {
             $connection = $host;
         }
-        else $connection = $this->getUdpSocketInstance($host, $port);
-
-        return $this->setClient($connection);
+        else $connection = self::getUdpSocketInstance($host, $port);
+        self::$connection = $connection;
     }
 
-    private function getUdpSocketInstance($host, $port)
+    public static function getConnection() {
+        return self::$connection;
+    }
+
+    private static function getUdpSocketInstance($host, $port)
     {
         return new \Domnikl\Statsd\Connection\UdpSocket($host, $port);
     }
@@ -81,22 +79,15 @@ class Metrics {
     /**
      * Set a Statsd Client
      *
-     * @param \Domnikl\Statsd\Connection $connection
+     * @param \Domnikl\Statsd\Client $connection
      * @param string|null $namespace
-     * @return \Domnikl\Statsd\Client $client
-     * @throws \Exception if invalid connection is provided
+     * @return self
      */
-    public function setClient($connection, $namespace=null)
+    public function setClient(\Domnikl\Statsd\Client $client, $appname=null)
     {
-        if(!$connection || !($connection instanceof \Domnikl\Statsd\Connection)) {
-            throw new \Exception("Invalid Statsd Connection: {$connection}");
-        }
-
-        $this->statsd = new \Domnikl\Statsd\Client(
-            $connection,
-            $this->getBaseNamespace()
-        );
-
+        if(!$appname) $appname = self::$appname;
+        if(!self::$statsd) self::$statsd = [];
+        self::$statsd[$appname] = $client;
         return $this;
     }
 
@@ -105,9 +96,16 @@ class Metrics {
      *
      * @return \Domnikl\Statsd\Client
      */
-    public function getClient()
+    public function getClient($appname=null)
     {
-        return $this->statsd;
+        if(!$appname) $appname = self::$appname;
+        if(!self::$statsd || !isset(self::$statsd[$appname])) {
+            self::$statsd[$appname] = new \Domnikl\Statsd\Client(
+                self::$connection,
+                $this->getBaseNamespace()
+            );
+        }
+        return self::$statsd[$appname];
     }
 
 
@@ -139,40 +137,51 @@ class Metrics {
     }
 
     /**
-     * Get Metrics instance
+     * Set Metrics application and hostname instance
      *
      * @param string $appname Application name 
      * @param string|null $hostname Hostname or ip address of server
      * @return self
      */
-    public static function getInstance($appname, $hostname=null)
+    public static function setApplication($appname, $hostname=null)
     {
-        if($hostname === null) {
-            $hostname = gethostname();
-        }
-
-        $callee = get_called_class();
-        if($callee && !isset(static::$instance[$callee])) {
-            static::$instance[$callee] = new $callee($appname, $hostname);
-            return static::$instance[$callee];
-        } else if(!isset(static::$instance)) {
-            static::$instance = new static($appname, $hostname);
-        }
-        return static::$instance;
+        self::$hostname = $hostname ?: gethostname();
+        self::$appname = $appname ?: uniqid(6);
     }
 
-    protected function getApplication() {
-        return $this->appname;
+    private static function get_class_name($class=null) {
+        $path = explode('\\', ($class ?: __CLASS__));
+        return array_pop($path);
+    }
+
+    public static function getInstance($appname=null)
+    {
+        $class = self::get_class_name(get_called_class());
+        $self = self::get_class_name(__CLASS__);
+        if($appname === null) $appname = self::$appname;
+
+        $hostname = self::$hostname;
+        if( ($class === $self)  || 
+            (($class !== $self) && 
+                class_exists($classname = __NAMESPACE__ . '\\' . ucwords($class)))
+        ) {
+            if(!isset(self::$instance[$appname]) || (self::$instance[$appname]::$appname !== $appname)) {
+                self::$instance[$appname] = new static($appname, $hostname);
+            }
+        }
+        return self::$instance[$appname];
+    }
+
+    public static function getApplication() {
+        return self::$appname;
     }
 
     protected function getHostname() {
-        return $this->hostname;
+        return self::$hostname;
     }
 
     protected function getBaseNamespace($sep='.') {
-        return self::PREFIX . $sep
-//                . $this->getHostname() . $sep
-                . $this->getApplication();
+        return self::PREFIX . $sep . self::$appname;
     }
 
     private function init_metrics($metrics_namespaces=[]) {
@@ -188,28 +197,19 @@ class Metrics {
         return $metrics;
     }
 
-    private function debug_metrics($key, $value) {
-        if($this->debug === true) {
-            $connection = $this->getConnection();
-            echo "\nSending {$key} : {$value}";
-        }
-    }
-
-    protected function count($name, $tags=[]) {
+    public function count($name, $count=1, $tags=[]) {
         $metric_name = $this->get_metric_name($name, 'count');
-        $metric_value = 1; //Incr by 1
-        $this->debug_metrics($metric_name, $metric_value);
+        $metric_value = $count; //Incr by $count
         $this->getClient()->count($metric_name, 1, 1.0, array_merge($this->tags, $tags));
     }
 
-    protected function start_timer($name) {
+    public function start_timer($name) {
         $metric_name = $this->get_metric_name($name, 'time');
         $this->getClient()->startTiming($metric_name);
     }
 
-    protected function end_timer($name, $tags=[]) {
+    public function end_timer($name, $tags=[]) {
         $metric_name = $this->get_metric_name($name, 'time');
-        $this->debug_metrics($metric_name, $metric_value);
         $this->getClient()->endTiming($metric_name, 1.0, array_merge($this->tags, $tags));
     }
 
