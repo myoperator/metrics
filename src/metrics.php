@@ -2,6 +2,8 @@
 
 namespace MyOperator\Metrics;
 
+ini_set('html_errors', 'off');
+
 class Metrics {
 
     protected static $instance;
@@ -10,49 +12,12 @@ class Metrics {
     protected static $appname;
     protected static $hostname;
 
-    protected $tags = [];
-    private $debug;
-
-    const PREFIX = 'appmetrics';
-
-    private $metric_types = [
-        'http' => 'http_requests',
-        'database' => 'database',
-        'network' => 'network_requests',
-        'exception' => 'exceptions'
-    ];
-
-    private $metric_attrs = ['count', 'sum', 'time'];
+    const PREFIX = 'appmetric';
 
     private function __construct($appname, $hostname)
     {
         self::$appname = $appname;
         self::$hostname = $hostname;
-
-        $this->init();
-    }
-
-    protected function init()
-    {
-        // Build metrics
-        $this->metrics = $this->init_metrics($this->metric_types);
-
-        // Init tag
-        $this->setTag('host', $this->getHostname());
-    }
-
-    /**
-     * Set Debug level of metrics
-     * 
-     * This will output the metrics being sent in text format
-     *
-     * @param boolean $debug
-     * @return self
-     */
-    public function setDebug(bool $debug)
-    {
-        $this->debug = $debug;
-        return $this;
     }
 
     public static function setConnection($host, $port=8125) {
@@ -79,11 +44,11 @@ class Metrics {
     /**
      * Set a Statsd Client
      *
-     * @param \Domnikl\Statsd\Client $connection
+     * @param MetricClient $connection
      * @param string|null $namespace
      * @return self
      */
-    public function setClient(\Domnikl\Statsd\Client $client, $appname=null)
+    public function setClient(MetricClient $client, $appname=null)
     {
         if(!$appname) $appname = self::$appname;
         if(!self::$statsd) self::$statsd = [];
@@ -94,13 +59,13 @@ class Metrics {
     /**
      * Get Statsd client being used
      *
-     * @return \Domnikl\Statsd\Client
+     * @return MetricClient
      */
     public function getClient($appname=null)
     {
         if(!$appname) $appname = self::$appname;
         if(!self::$statsd || !isset(self::$statsd[$appname])) {
-            self::$statsd[$appname] = new \Domnikl\Statsd\Client(
+            self::$statsd[$appname] = new MetricClient(
                 self::$connection,
                 $this->getBaseNamespace()
             );
@@ -116,12 +81,9 @@ class Metrics {
      * @param [string] $val
      * @return self
      */
-    public function setTag($key, $val=null)
+    public function tag($key, $val=null)
     {
-        if(is_array($key)) {
-            $this->tags = array_merge($this->tags, $key);
-        }
-        else $this->tags[$key] = $val;
+        $this->getClient()->setTag($key, $val);
         return $this;
     }
 
@@ -133,7 +95,17 @@ class Metrics {
      */
     public function getTag($key)
     {
-        return isset($this->tags[$key]) ? $this->tags[$key] : null;
+        return $this->getClient()->getTag($key);
+    }
+
+    /**
+     * Get all tag
+     *
+     * @return array [$tag[n.]..]
+     */
+    public function getTags()
+    {
+        return $this->getClient()->getTags();
     }
 
     /**
@@ -181,41 +153,10 @@ class Metrics {
     }
 
     protected function getBaseNamespace($sep='.') {
-        return self::PREFIX . $sep . self::$appname;
+        return self::PREFIX . $sep . $this->getApplication();
     }
 
-    private function init_metrics($metrics_namespaces=[]) {
-        $metrics = [];
-
-        foreach($metrics_namespaces as $k => $namespace) {
-            foreach($this->metric_attrs as $attr) {
-                $metrics[$k][$attr] = $namespace. '.' . $attr;
-            }
-            
-        }
-
-        return $metrics;
-    }
-
-    public function count($name, $count=1, $tags=[]) {
-        $metric_name = $this->get_metric_name($name, 'count');
-        $metric_value = $count; //Incr by $count
-        $this->getClient()->count($metric_name, 1, 1.0, array_merge($this->tags, $tags));
-    }
-
-    public function start_timer($name) {
-        $metric_name = $this->get_metric_name($name, 'time');
-        $this->getClient()->startTiming($metric_name);
-    }
-
-    public function end_timer($name, $tags=[]) {
-        $metric_name = $this->get_metric_name($name, 'time');
-        $this->getClient()->endTiming($metric_name, 1.0, array_merge($this->tags, $tags));
-    }
-
-    protected function get_metric_name($name, $attr) {
-        $attr = ($attr && in_array($attr, $this->metric_attrs)) ? $attr : 'generic';
-        if(!isset($this->metrics[$name])) return $name . '.' . $attr;
-        return $this->metrics[$name][$attr];
+    public function __call($name, $args) {
+        call_user_func_array([$this->getClient(), $name], $args);
     }
 }
