@@ -2,8 +2,6 @@
 
 namespace MyOperator\Metrics;
 
-ini_set('html_errors', 'off');
-
 class Metrics {
 
     protected static $instance;

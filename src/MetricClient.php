@@ -120,11 +120,6 @@ class MetricClient extends Client {
 
         // Set the tag
         $tags = $this->buildTags($tags);
-        print_r([
-            $prefix,
-            $value,
-            $tags
-        ]);
-        //parent::send($prefix, $value, $type, $sampleRate, $tags);
+        parent::send($prefix, $value, $type, $sampleRate, $tags);
     }
 }
