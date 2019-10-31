@@ -11,7 +11,8 @@
     ],
     "minimum-stability": "dev",
     "require": {
-        "domnikl/statsd": "~3.0"
+        "php": ">= 7.2",
+        "codeasashu/statsd": "dev-master"
     },
     "require-dev": {
         "phpunit/phpunit": "^8"

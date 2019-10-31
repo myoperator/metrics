@@ -60,26 +60,6 @@ class MetricClient extends Client {
         return $this->tags;
     }
 
-    public function count(string $key, $value, float $sampleRate = 1.0, array $tags = []): void
-    {
-        $this->send($key, $value, 'c', $sampleRate, $tags);
-    }
-
-    public function timing(string $key, float $value, float $sampleRate = 1.0, array $tags = []): void
-    {
-        $this->send($key, $value, 'ms', $sampleRate, $tags);
-    }
-
-    public function gauge(string $key, $value, array $tags = []): void
-    {
-        $this->send($key, $value, 'g', 1, $tags);
-    }
-
-    public function set(string $key, int $value, array $tags = []): void
-    {
-        $this->send($key, $value, 's', 1, $tags);
-    }
-
     public function setPrefix(string $prefix=null)
     {
         $this->prefix = $prefix;
@@ -113,13 +93,13 @@ class MetricClient extends Client {
      * @param float $sampleRate
      * @param array $tags
      */
-    public function send(string $key, $value, string $type, float $sampleRate, array $tags = []): void
+    public function buildSampledData(string $key, $value, string $type, float $sampleRate, array $tags = []): string
     {
         // Prefix the key
         $prefix = $this->buildPrefix($type, $key);
 
         // Set the tag
         $tags = $this->buildTags($tags);
-        parent::send($prefix, $value, $type, $sampleRate, $tags);
+        return parent::buildSampledData($prefix, $value, $type, $sampleRate, $tags);
     }
 }
